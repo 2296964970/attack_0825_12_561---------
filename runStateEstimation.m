@@ -89,7 +89,7 @@ if verbose
     fprintf('--> 正在构建测量向量和权重矩阵...\n');
 end
 
-[measurement_vector, ~, weights] = vectorizeAndMapMeasurements(measured_measurements, pmu_config, noise_params);
+[measurement_vector, ~, weights] = vectorizeAndMapMeasurements(measured_measurements, pmu_config, noise_params, struct('num_buses', num_buses, 'num_branches', size(branch,1)));
 weight_matrix = diag(weights);
 
 if verbose

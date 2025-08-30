@@ -28,7 +28,7 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
     attacked_measurements = system_measurements;
     
     % Step 2: 根据优化结果 (攻击向量 a) 更新攻击者已知的测量
-    [z_vector_known, ~, ~] = vectorizeAndMapMeasurements(attacker_measurements, pmu_config, noise_params);
+    [z_vector_known, ~, ~] = vectorizeAndMapMeasurements(attacker_measurements, pmu_config, noise_params, struct('num_buses', size(bus,1), 'num_branches', size(branch,1)));
     z_known_attacked = z_vector_known + best_sol.a;
     
     current_row = 1;

@@ -1,4 +1,4 @@
-function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements, pmu_config, noise_params)
+function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements, pmu_config, noise_params, expected_sizes)
 %VECTORIZEANDMAPMEASUREMENTS 将结构化的测量数据转换为向量和映射表
 %
 %   语法:
@@ -24,6 +24,18 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
     vector_parts = {};
     weights_parts = {};
 
+    % 预期尺寸（可选），若提供则统一调用校验函数
+    num_buses = [];
+    num_branches = [];
+    if nargin >= 4 && ~isempty(expected_sizes)
+        if isfield(expected_sizes, 'num_buses'), num_buses = expected_sizes.num_buses; end
+        if isfield(expected_sizes, 'num_branches'), num_branches = expected_sizes.num_branches; end
+        if ~isempty(num_buses) && ~isempty(num_branches)
+            % 统一校验（集中化报错信息）
+            validateMeasurementDimensions(measurements, pmu_config, num_buses, num_branches);
+        end
+    end
+
     % --- 1. SCADA 测量处理 ---
     if isfield(measurements, 'scada')
         scada_meas = measurements.scada;
@@ -33,6 +45,8 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
                            'qf', noise_params.scada.q, 'pt', noise_params.scada.p, ...
                            'qt', noise_params.scada.q);
                            
+        % 尺寸校验已集中在 validateMeasurementDimensions 中（若提供 expected_sizes）
+
         for i = 1:length(scada_fields)
             field = scada_fields{i};
             if isfield(scada_meas, field) && ~isempty(scada_meas.(field))
@@ -48,6 +62,7 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
     % --- 2. PMU 测量处理 (转换为直角坐标) ---
     if isfield(measurements, 'pmu')
         pmu_meas = measurements.pmu;
+        % 尺寸校验已集中在 validateMeasurementDimensions 中（若提供 expected_sizes）
         
         % 电压实部 (vm存在时)
         if isfield(pmu_meas, 'vm') && ~isempty(pmu_meas.vm)

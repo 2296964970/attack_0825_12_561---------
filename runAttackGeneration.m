@@ -46,7 +46,7 @@ attack_results.attacked_lines_indices = attack_params.attacked_lines_indices; % 
 
 %% --- 3. 动态测量处理 (DYNAMIC MEASUREMENT PROCESSING) ---
 if verbose, fprintf('正在向量化测量数据...\n'); end
-[z_vector, attacker_measurement_map, ~] = vectorizeAndMapMeasurements(attacker_measurements, pmu_config, noise_params);
+[z_vector, attacker_measurement_map, ~] = vectorizeAndMapMeasurements(attacker_measurements, pmu_config, noise_params, struct('num_buses', size(bus,1), 'num_branches', size(mpc.branch,1)));
 num_measurements = length(z_vector);
 if verbose, fprintf('测量向量化完成, 总测量数量: %d\n', num_measurements); end
 

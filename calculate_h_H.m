@@ -33,6 +33,10 @@ current_voltage_real = state_vector(1:num_buses);
 current_voltage_imag = zeros(num_buses, 1);
 current_voltage_imag(f_indices) = state_vector(num_buses+1:end);
 
+% --- 1b. 维度一致性与测量计数检查 ---
+expected_total = validateMeasurementDimensions(measured_measurements, pmu_config, num_buses, size(branch,1));
+assert(expected_total == num_measurements, '测量向量长度不一致: 期望 %d, 实得 %d。请检查测量组装/屏蔽设置。', expected_total, num_measurements);
+
 % --- 2. 初始化输出 ---
 h_parts = {};
 jacobian_matrix = zeros(num_measurements, num_state_vars);
