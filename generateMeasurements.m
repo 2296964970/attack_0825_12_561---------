@@ -31,10 +31,22 @@ mpc.bus(:, QD) = mpc_base.bus(:, QD) * config.Simulation.LoadScaleFactor * load_
 mpopt = mpoption('verbose', 0, 'out.all', 0);
 
 % --- 执行最优潮流计算 ---
-opf_results = runopf(mpc, mpopt);
+% --- 执行最优潮流计算 ---
+try
+    opf_results = runopf(mpc, mpopt);
+catch ME
+    % 某些环境下求解器异常会直接抛出错误，这里捕获并按未收敛处理
+    warning('场景 %d 的最优潮流 (OPF) 执行异常: %s', scenario_index, ME.message);
+    opf_results = struct('success', false);
+end
 
-if ~opf_results.success
-    error('场景 %d 的最优潮流 (OPF) 未收敛!', scenario_index);
+% --- OPF 未收敛时，返回占位输出，交由上层跳过此场景 ---
+if ~isfield(opf_results, 'success') || ~opf_results.success
+    true_measurements  = struct();
+    noisy_measurements = struct();
+    system_params      = struct();
+    pmu_config         = struct();
+    return;
 end
 
 % =================================================================
