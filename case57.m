@@ -184,15 +184,6 @@ mpc.branch = [
 	38	48	0.0312	0.0482	0	100	0	0	0	0	1	-360	360;
 	9	55	0	0.1205	0	100	0	0	0.94	0	1	-360	360;
 ];
-Ptrmax=zeros(57,57);
-fb = mpc.branch(:,1);
-tb = mpc.branch(:,2);
-nbranch = length(fb);
-for i=1:nbranch
-    Ptrmax(fb(i),tb(i))=mpc.branch(i,6)/100;
-    Ptrmax(tb(i),fb(i))=mpc.branch(i,6)/100;
-end
-save Ptrmax.mat Ptrmax;
 %%-----  OPF Data  -----%%
 %% generator cost data
 %	1	startup	shutdown	n	x1	y1	...	xn	yn
