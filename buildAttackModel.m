@@ -116,9 +116,17 @@ Constraints = [Constraints, (V_compromised(ref_bus_id) == attacker_measurements.
 gen_bus_indices = gen(:, GEN_BUS);
 Constraints = [Constraints, (gen(:, PMIN) / baseMVA <= P_inj_compromised(gen_bus_indices) <= gen(:, PMAX) / baseMVA)];
 
-% 4.5 自定义系统约束
-if exist('constraints_case57', 'file')
-    Constraints = [Constraints, constraints_case57(P_inj_compromised, mpc)];
+% 4.5 自定义系统约束 (动态加载)
+if isfield(attack_params, 'ConstraintFile') && ~isempty(attack_params.ConstraintFile)
+    constraint_func_name = attack_params.ConstraintFile;
+    if exist(constraint_func_name, 'file') == 2 % 确保是 .m 文件
+        constraint_func = str2func(constraint_func_name);
+        Constraints = [Constraints, constraint_func(P_inj_compromised, mpc)];
+        fprintf('    - 已加载自定义约束: %s\n', constraint_func_name);
+    else
+        % 如果配置文件指定了约束文件但未找到，可以选择性地发出警告
+        % fprintf('警告: 在配置中指定的约束文件 "%s" 未找到。\n', constraint_func_name);
+    end
 end
 
 % 4.6 攻击目标约束

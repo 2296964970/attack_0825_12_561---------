@@ -32,6 +32,11 @@ attack_results = struct('success', false, 'objective', NaN, 'attacked_lines_indi
 %% --- 2. 准备攻击参数 (PREPARE ATTACK PARAMETERS) ---
 if verbose, fprintf('正在准备攻击参数...\n'); end
 attack_params = config.Attack;
+
+% 将系统特定的约束文件配置传递给 attack_params
+if isfield(config.System, 'ConstraintFile')
+    attack_params.ConstraintFile = config.System.ConstraintFile;
+end
 noise_params = config.Noise;
 
 % 注入外部数据和配置到攻击参数中

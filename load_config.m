@@ -14,6 +14,8 @@ function config = load_config()
     % =========================================================================
     config.System = struct();
     config.System.CaseName = 'case57';                    % MATPOWER 电网案例名称
+    % 新增: 根据案例名称自动生成约束文件名
+    config.System.ConstraintFile = sprintf('constraints_%s', config.System.CaseName);
     config.System.LoadDataFile = '2-7_week.txt';          % 负荷曲线数据文件
     config.System.LineCapacityFile = 'Ptrmax57.mat';      % 线路容量数据文件
     config.System.ResultsFile = 'attack_simulation_results.mat'; % 保存仿真日志的文件
