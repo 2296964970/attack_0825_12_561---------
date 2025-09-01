@@ -105,55 +105,31 @@ for seg = 1:length(measurement_map)
                 case 'pf'
                     Pf = e_from .* If_real + f_from .* If_imag;
                     h_parts{end+1} = Pf(idx);
-                    for t = 1:cnt
-                        k = idx(t);
-                        i = branch_from_bus(k); e_i = current_voltage_real(i); f_i = current_voltage_imag(i);
-                        dPf_de = zeros(1, num_buses); dPf_df = zeros(1, num_buses);
-                        dPf_de(i) = If_real(k); dPf_de = dPf_de + e_i * G_from(k,:) + f_i * B_from(k,:);
-                        dPf_df(i) = If_imag(k); dPf_df = dPf_df - e_i * B_from(k,:) + f_i * G_from(k,:);
-                        jacobian_matrix(row_idx, 1:num_buses) = dPf_de;
-                        jacobian_matrix(row_idx, num_buses+1:end) = dPf_df(f_indices);
-                        row_idx = row_idx + 1;
-                    end
+                    [dP_de, dP_df] = branch_P_block(idx, branch_from_bus, G_from, B_from, current_voltage_real, current_voltage_imag, If_real, If_imag, num_buses);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dP_de;
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dP_df(:, f_indices);
+                    row_idx = row_idx + cnt;
                 case 'qf'
                     Qf = f_from .* If_real - e_from .* If_imag;
                     h_parts{end+1} = Qf(idx);
-                    for t = 1:cnt
-                        k = idx(t);
-                        i = branch_from_bus(k); e_i = current_voltage_real(i); f_i = current_voltage_imag(i);
-                        dQf_de = zeros(1, num_buses); dQf_df = zeros(1, num_buses);
-                        dQf_de(i) = -If_imag(k); dQf_de = dQf_de + f_i * G_from(k,:) - e_i * B_from(k,:);
-                        dQf_df(i) =  If_real(k);  dQf_df = dQf_df - f_i * B_from(k,:) - e_i * G_from(k,:);
-                        jacobian_matrix(row_idx, 1:num_buses) = dQf_de;
-                        jacobian_matrix(row_idx, num_buses+1:end) = dQf_df(f_indices);
-                        row_idx = row_idx + 1;
-                    end
+                    [dQ_de, dQ_df] = branch_Q_block(idx, branch_from_bus, G_from, B_from, current_voltage_real, current_voltage_imag, If_real, If_imag, num_buses);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQ_de;
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQ_df(:, f_indices);
+                    row_idx = row_idx + cnt;
                 case 'pt'
                     Pt = e_to .* It_real + f_to .* It_imag;
                     h_parts{end+1} = Pt(idx);
-                    for t = 1:cnt
-                        k = idx(t);
-                        i = branch_to_bus(k); e_i = current_voltage_real(i); f_i = current_voltage_imag(i);
-                        dPt_de = zeros(1, num_buses); dPt_df = zeros(1, num_buses);
-                        dPt_de(i) = It_real(k); dPt_de = dPt_de + e_i * G_to(k,:) + f_i * B_to(k,:);
-                        dPt_df(i) = It_imag(k); dPt_df = dPt_df - e_i * B_to(k,:) + f_i * G_to(k,:);
-                        jacobian_matrix(row_idx, 1:num_buses) = dPt_de;
-                        jacobian_matrix(row_idx, num_buses+1:end) = dPt_df(f_indices);
-                        row_idx = row_idx + 1;
-                    end
+                    [dP_de, dP_df] = branch_P_block(idx, branch_to_bus, G_to, B_to, current_voltage_real, current_voltage_imag, It_real, It_imag, num_buses);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dP_de;
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dP_df(:, f_indices);
+                    row_idx = row_idx + cnt;
                 case 'qt'
                     Qt = f_to .* It_real - e_to .* It_imag;
                     h_parts{end+1} = Qt(idx);
-                    for t = 1:cnt
-                        k = idx(t);
-                        i = branch_to_bus(k); e_i = current_voltage_real(i); f_i = current_voltage_imag(i);
-                        dQt_de = zeros(1, num_buses); dQt_df = zeros(1, num_buses);
-                        dQt_de(i) = -It_imag(k); dQt_de = dQt_de + f_i * G_to(k,:) - e_i * B_to(k,:);
-                        dQt_df(i) =  It_real(k);  dQt_df = dQt_df - f_i * B_to(k,:) - e_i * G_to(k,:);
-                        jacobian_matrix(row_idx, 1:num_buses) = dQt_de;
-                        jacobian_matrix(row_idx, num_buses+1:end) = dQt_df(f_indices);
-                        row_idx = row_idx + 1;
-                    end
+                    [dQ_de, dQ_df] = branch_Q_block(idx, branch_to_bus, G_to, B_to, current_voltage_real, current_voltage_imag, It_real, It_imag, num_buses);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQ_de;
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQ_df(:, f_indices);
+                    row_idx = row_idx + cnt;
             end
         case 'pmu'
             switch field
@@ -200,3 +176,40 @@ end
 
 calculated_measurements = vertcat(h_parts{:});
 end
+
+function [dP_de, dP_df] = branch_P_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
+% 支路有功测量的雅可比块（逐行安全构造）
+nb = numel(kset);
+dP_de = zeros(nb, num_buses);
+dP_df = zeros(nb, num_buses);
+for t = 1:nb
+    k = kset(t);
+    i = branch_bus_side(k);
+    e_i = e_all(i); f_i = f_all(i);
+    row_de = zeros(1, num_buses);
+    row_df = zeros(1, num_buses);
+    row_de(i) = Ir(k); row_de = row_de + e_i * Gs(k,:) + f_i * Bs(k,:);
+    row_df(i) = Ii(k); row_df = row_df - e_i * Bs(k,:) + f_i * Gs(k,:);
+    dP_de(t,:) = row_de;
+    dP_df(t,:) = row_df;
+end
+end
+
+function [dQ_de, dQ_df] = branch_Q_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
+% 支路无功测量的雅可比块（逐行安全构造）
+nb = numel(kset);
+dQ_de = zeros(nb, num_buses);
+dQ_df = zeros(nb, num_buses);
+for t = 1:nb
+    k = kset(t);
+    i = branch_bus_side(k);
+    e_i = e_all(i); f_i = f_all(i);
+    row_de = zeros(1, num_buses);
+    row_df = zeros(1, num_buses);
+    row_de(i) = -Ii(k); row_de = row_de + f_i * Gs(k,:) - e_i * Bs(k,:);
+    row_df(i) =  Ir(k); row_df = row_df - f_i * Bs(k,:) - e_i * Gs(k,:);
+    dQ_de(t,:) = row_de;
+    dQ_df(t,:) = row_df;
+end
+end
+
