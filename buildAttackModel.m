@@ -81,22 +81,26 @@ for i = 1:length(attacker_measurement_map)
     map_item = attacker_measurement_map{i};
     count = map_item.count;
     indices = current_row : (current_row + count - 1);
-    
+    idx = [];
+    if isfield(map_item, 'indices') && ~isempty(map_item.indices)
+        idx = map_item.indices(:);
+    end
+
     h_c = []; % h(x_c)
     switch map_item.field
-        case 'v',    h_c = V_compromised(1:count);
-        case 'pi',   h_c = P_inj_compromised(1:count);
-        case 'qi',   h_c = Q_inj_compromised(1:count);
-        case 'pf',   h_c = P_from_compromised(1:count);
-        case 'qf',   h_c = Q_from_compromised(1:count);
-        case 'pt',   h_c = P_to_compromised(1:count);
-        case 'qt',   h_c = Q_to_compromised(1:count);
-        case 'v_real',  h_c = V_compromised(pmu_locations) .* cos(theta_compromised(pmu_locations));
-        case 'v_imag',  h_c = V_compromised(pmu_locations) .* sin(theta_compromised(pmu_locations));
-        case 'if_real', h_c = real(Y_from * V_c_complex); h_c = h_c(pmu_from_branch_indices);
-        case 'if_imag', h_c = imag(Y_from * V_c_complex); h_c = h_c(pmu_from_branch_indices);
-        case 'it_real', h_c = real(Y_to   * V_c_complex); h_c = h_c(pmu_to_branch_indices);
-        case 'it_imag', h_c = imag(Y_to   * V_c_complex); h_c = h_c(pmu_to_branch_indices);
+        case 'v',    h_c = V_compromised(idx);
+        case 'pi',   h_c = P_inj_compromised(idx);
+        case 'qi',   h_c = Q_inj_compromised(idx);
+        case 'pf',   h_c = P_from_compromised(idx);
+        case 'qf',   h_c = Q_from_compromised(idx);
+        case 'pt',   h_c = P_to_compromised(idx);
+        case 'qt',   h_c = Q_to_compromised(idx);
+        case 'v_real',  h_c = V_compromised(idx) .* cos(theta_compromised(idx));
+        case 'v_imag',  h_c = V_compromised(idx) .* sin(theta_compromised(idx));
+        case 'if_real', h_full = real(Y_from * V_c_complex); h_c = h_full(idx);
+        case 'if_imag', h_full = imag(Y_from * V_c_complex); h_c = h_full(idx);
+        case 'it_real', h_full = real(Y_to   * V_c_complex); h_c = h_full(idx);
+        case 'it_imag', h_full = imag(Y_to   * V_c_complex); h_c = h_full(idx);
     end
     
     Constraints = [Constraints, (h_c - z_vector(indices) == attack_vector_a(indices))];

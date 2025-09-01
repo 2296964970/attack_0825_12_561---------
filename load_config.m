@@ -64,7 +64,19 @@ function config = load_config()
     config.Attack.Solver = 'ipopt';                       % YALMIP 使用的求解器
 
     % =========================================================================
-    %  6. 状态估计算法参数 (State Estimation Parameters)
+    %  6. 量测覆盖选择 (Measurement Selection for Sparse Coverage)
+    % =========================================================================
+    % 留空表示按当前逻辑使用“全覆盖”；如需稀疏量测，可按字段填入母线/支路索引
+    % 示例：
+    %   config.MeasurementSelection.SCADA.v_idx  = [1 5 9];       % 仅这些母线有电压幅值量测
+    %   config.MeasurementSelection.SCADA.pf_idx = [2 7 11];      % 仅这些支路有首端有功
+    %   config.MeasurementSelection.PMU.bus_idx  = [4 10 15];     % 仅这些母线有PMU电压相量
+    %   config.MeasurementSelection.PMU.from_branch_idx = [3 8];  % 仅这些支路有首端电流相量
+    % 默认保持空结构，等价于全覆盖。
+    config.MeasurementSelection = struct();
+
+    % =========================================================================
+    %  7. 状态估计算法参数 (State Estimation Parameters)
     % =========================================================================
     config.StateEstimation = struct();
     config.StateEstimation.MaxIter = 20;                  % WLS 最大迭代次数

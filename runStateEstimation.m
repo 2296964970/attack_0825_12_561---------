@@ -89,7 +89,7 @@ if verbose
     fprintf('--> 正在构建测量向量和权重矩阵...\n');
 end
 
-[measurement_vector, ~, weights] = vectorizeAndMapMeasurements(measured_measurements, pmu_config, noise_params, struct('num_buses', num_buses, 'num_branches', size(branch,1)));
+[measurement_vector, measurement_map, weights] = vectorizeAndMapMeasurements(measured_measurements, pmu_config, noise_params, struct('num_buses', num_buses, 'num_branches', size(branch,1), 'selection', config.MeasurementSelection));
 weight_matrix = diag(weights);
 
 if verbose
@@ -109,23 +109,39 @@ final_iter_count = -1; % 初始化为-1，表示未收敛
 for iteration_count = 1:options.max_iter
     
     % --- 3.1 & 3.2: 调用外部函数计算 h(x) 和雅可比矩阵 H ---
-    num_measurements = length(measurement_vector);
-    [calculated_measurements, jacobian_matrix] = calculate_h_H(state_vector, mpc, measured_measurements, pmu_config, num_measurements, num_state_vars, options);
+    [calculated_measurements, jacobian_matrix] = calculate_h_H(state_vector, mpc, measurement_map, pmu_config, num_state_vars, options);
     
     % --- 3.3 求解正规方程 ---
     residual = measurement_vector - calculated_measurements;
-    gain_matrix = jacobian_matrix' * weight_matrix * jacobian_matrix;
+    gain_matrix = jacobian_matrix' * weight_matrix * jacobian_matrix; % 仍用于 BDD
     right_hand_side = jacobian_matrix' * weight_matrix * residual;
-    
-    % 检查矩阵条件数，如果接近奇异则进行正则化以提高数值稳定性
-    condition_number = rcond(gain_matrix);
-    if condition_number < 1e-14
-        if verbose, fprintf('  - 警告: 增益矩阵接近奇异 (条件数: %.2e)，应用正则化。\n', condition_number); end
-        % 使用配置中的正则化因子
-        gain_matrix = gain_matrix + options.regularization_factor * eye(size(gain_matrix));
+
+    % 使用加权最小二乘的等价形式: A = sqrt(W)*H, b = sqrt(W)*r，避免正规方程放大病态
+    sqrt_w = sqrt(diag(weight_matrix));
+    A = bsxfun(@times, sqrt_w, jacobian_matrix);
+    bvec = sqrt_w .* residual;
+
+    % 首选最小范数解（对秩亏/病态稳健），若不可用则回退 QR 最小二乘
+    try
+        if exist('lsqminnorm','file') == 2
+            state_update_vector = lsqminnorm(A, bvec);
+        else
+            state_update_vector = A \ bvec;
+        end
+    catch
+        % 回退到带阻尼的正规方程
+        condition_number = rcond(gain_matrix);
+        if condition_number < 1e-10
+            if verbose, fprintf('  - 警告: 增益矩阵接近奇异 (条件数: %.2e)，应用正则化。\n', condition_number); end
+            dmax = max(1.0, max(abs(diag(gain_matrix))));
+            tau = max([options.regularization_factor, 1e-6, 1e-3 * dmax]);
+            if condition_number < 1e-14
+                tau = max(tau, 1e-2 * dmax);
+            end
+            gain_matrix = gain_matrix + tau * eye(size(gain_matrix));
+        end
+        state_update_vector = gain_matrix \ right_hand_side;
     end
-    
-    state_update_vector = gain_matrix \ right_hand_side;
     
     % --- 3.4 更新状态并检查收敛 ---
     state_vector = state_vector + state_update_vector;
@@ -288,19 +304,31 @@ if final_iter_count > 0 % 仅在收敛时执行
 
     % 2. 调用函数计算 h(x_final)
     %    我们只需要 h(x)，因此使用 ~ 忽略第二个输出（雅可比矩阵 H）
-    num_measurements = length(measurement_vector);
     num_state_vars = 2 * num_buses - 1;
-    [h_final, ~] = calculate_h_H(state_vector_final, mpc, measured_measurements, pmu_config, num_measurements, num_state_vars, options);
+    [h_final, ~] = calculate_h_H(state_vector_final, mpc, measurement_map, pmu_config, num_state_vars, options);
 
     final_residual = measurement_vector - h_final;
 
     % --- 5.2 执行最大归一化残差 (LNR) 检验 ---
     try
-        % 残差协方差矩阵 R_cov = inv(W) - H * inv(G) * H'
-        residual_covariance = inv(weight_matrix) - jacobian_matrix * (gain_matrix \ jacobian_matrix');
-        
-        % 提取对角线元素用于归一化
-        diag_residual_cov = abs(diag(residual_covariance));
+        % 残差协方差矩阵的稳健计算
+        % G = H' W H 可能病态，这里使用阻尼 + 伪逆避免告警
+        G = jacobian_matrix' * weight_matrix * jacobian_matrix;
+        rc = rcond(G);
+        if rc < 1e-10
+            dmax = max(1.0, max(abs(diag(G))));
+            tau = max([options.regularization_factor, 1e-6, 1e-3 * dmax]);
+            if rc < 1e-14, tau = max(tau, 1e-2 * dmax); end
+            G = G + tau * eye(size(G));
+        end
+        Ginv = pinv(G, 1e-10);
+        % 避免 inv(W)：直接使用权重对角得到 R 的对角线
+        wdiag = diag(weight_matrix);
+        Rdiag = 1 ./ max(wdiag, 1e-18);
+        % 仅计算对角线：diag(H*Ginv*H') = sum((H*Ginv) .* H, 2)
+        HG = jacobian_matrix * Ginv;
+        diag_HGHT = sum(HG .* jacobian_matrix, 2);
+        diag_residual_cov = abs(Rdiag - diag_HGHT);
         diag_residual_cov(diag_residual_cov < 1e-9) = 1e-9; % 避免除以零
 
         % 计算归一化残差 (服从标准正态分布)

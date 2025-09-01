@@ -27,9 +27,13 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
     % 预期尺寸（可选），若提供则统一调用校验函数
     num_buses = [];
     num_branches = [];
+    selection = struct();
     if nargin >= 4 && ~isempty(expected_sizes)
         if isfield(expected_sizes, 'num_buses'), num_buses = expected_sizes.num_buses; end
         if isfield(expected_sizes, 'num_branches'), num_branches = expected_sizes.num_branches; end
+        if isfield(expected_sizes, 'selection') && ~isempty(expected_sizes.selection)
+            selection = expected_sizes.selection;
+        end
         if ~isempty(num_buses) && ~isempty(num_branches)
             % 统一校验（集中化报错信息）
             validateMeasurementDimensions(measurements, pmu_config, num_buses, num_branches);
@@ -50,9 +54,32 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
         for i = 1:length(scada_fields)
             field = scada_fields{i};
             if isfield(scada_meas, field) && ~isempty(scada_meas.(field))
-                data = scada_meas.(field)(:);
+                % 如果 selection 明确给出该字段且为空，视为禁用该字段
+                if isfield(selection, 'SCADA') && isfield(selection.SCADA, [field '_idx']) && isempty(selection.SCADA.([field '_idx']))
+                    continue;
+                end
+                full_data = scada_meas.(field)(:);
+                % 选择索引（母线或支路）：默认全覆盖
+                switch field
+                    case {'v','pi','qi'}
+                        if isfield(selection, 'SCADA') && isfield(selection.SCADA, [field '_idx']) && ~isempty(selection.SCADA.([field '_idx']))
+                            sel_idx = selection.SCADA.([field '_idx'])(:);
+                        else
+                            if isempty(num_buses), num_buses = length(full_data); end
+                            sel_idx = (1:num_buses)';
+                        end
+                    otherwise % 分支量测 pf/qf/pt/qt
+                        if isfield(selection, 'SCADA') && isfield(selection.SCADA, [field '_idx']) && ~isempty(selection.SCADA.([field '_idx']))
+                            sel_idx = selection.SCADA.([field '_idx'])(:);
+                        else
+                            if isempty(num_branches), num_branches = length(full_data); end
+                            sel_idx = (1:num_branches)';
+                        end
+                end
+                % 取子集并记录 indices
+                data = full_data(sel_idx);
                 count = length(data);
-                z_map{end+1} = struct('type', 'scada', 'field', field, 'count', count);
+                z_map{end+1} = struct('type', 'scada', 'field', field, 'count', count, 'indices', sel_idx);
                 vector_parts{end+1} = data;
                 weights_parts{end+1} = repmat(1 / noise_map.(field)^2, count, 1);
             end
@@ -64,79 +91,105 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
         pmu_meas = measurements.pmu;
         % 尺寸校验已集中在 validateMeasurementDimensions 中（若提供 expected_sizes）
         
-        % 电压实部 (vm存在时)
+        % 电压相量 -> 直角坐标（按选择的PMU母线子集）
         if isfield(pmu_meas, 'vm') && ~isempty(pmu_meas.vm)
-            v_real = pmu_meas.vm .* cos(pmu_meas.va);
+            % 选择PMU母线索引（默认为全部 pmu_config.locations）
+            if isfield(selection, 'PMU') && isfield(selection.PMU, 'bus_idx') && isempty(selection.PMU.bus_idx)
+                % 明确空：禁用 PMU 电压段
+                sel_bus = [];
+            elseif isfield(selection, 'PMU') && isfield(selection.PMU, 'bus_idx') && ~isempty(selection.PMU.bus_idx)
+                sel_bus = selection.PMU.bus_idx(:);
+            else
+                sel_bus = pmu_config.locations(:);
+            end
+            if isempty(sel_bus)
+                % 跳过 PMU 电压两段
+            else
+            % 将母线编号映射到 pmu 测量向量的位置
+            [~, pos] = ismember(sel_bus, pmu_config.locations(:)); pos = pos(pos>0);
+            vm_sel = pmu_meas.vm(pos);
+            va_sel = pmu_meas.va(pos);
+            v_real = vm_sel .* cos(va_sel);
+            v_imag = vm_sel .* sin(va_sel);
+            
             count = length(v_real);
-            
-            z_map{end+1} = struct('type', 'pmu', 'field', 'v_real', 'count', count, 'indices', pmu_config.locations);
+            z_map{end+1} = struct('type', 'pmu', 'field', 'v_real', 'count', count, 'indices', sel_bus);
             vector_parts{end+1} = v_real;
-            
             s_vm2=noise_params.pmu.vm^2; s_va2=noise_params.pmu.va^2;
-            s2_vr=(cos(pmu_meas.va)).^2*s_vm2+(pmu_meas.vm.*sin(pmu_meas.va)).^2*s_va2;
+            s2_vr=(cos(va_sel)).^2*s_vm2+(vm_sel.*sin(va_sel)).^2*s_va2;
             weights_parts{end+1} = 1./s2_vr;
-        end
-        
-        % 电压虚部 (va存在时)
-        if isfield(pmu_meas, 'va') && ~isempty(pmu_meas.va)
-            v_imag = pmu_meas.vm .* sin(pmu_meas.va);
-            count = length(v_imag);
             
-            z_map{end+1} = struct('type', 'pmu', 'field', 'v_imag', 'count', count, 'indices', pmu_config.locations);
-            vector_parts{end+1} = v_imag;
-            
-            s_vm2=noise_params.pmu.vm^2; s_va2=noise_params.pmu.va^2;
-            s2_vi=(sin(pmu_meas.va)).^2*s_vm2+(pmu_meas.vm.*cos(pmu_meas.va)).^2*s_va2;
-            weights_parts{end+1} = 1./s2_vi;
+            % 同时入队虚部（若va存在）
+            if isfield(pmu_meas, 'va') && ~isempty(pmu_meas.va)
+                z_map{end+1} = struct('type', 'pmu', 'field', 'v_imag', 'count', count, 'indices', sel_bus);
+                vector_parts{end+1} = v_imag;
+                s2_vi=(sin(va_sel)).^2*s_vm2+(vm_sel.*cos(va_sel)).^2*s_va2;
+                weights_parts{end+1} = 1./s2_vi;
+            end
+            end
         end
         
         s_im2=noise_params.pmu.im^2; s_ia2=noise_params.pmu.ia^2;
-        % From-end 电流实部 (imf存在时)
+        % From-end 电流相量 -> 直角坐标（按选择的支路子集）
         if isfield(pmu_meas, 'imf') && ~isempty(pmu_meas.imf)
-            if_real = pmu_meas.imf .* cos(pmu_meas.iaf);
-            count = length(if_real);
+            if isfield(selection, 'PMU') && isfield(selection.PMU, 'from_branch_idx') && isempty(selection.PMU.from_branch_idx)
+                sel_br = [];
+            elseif isfield(selection, 'PMU') && isfield(selection.PMU, 'from_branch_idx') && ~isempty(selection.PMU.from_branch_idx)
+                sel_br = selection.PMU.from_branch_idx(:);
+            else
+                sel_br = pmu_config.pmu_from_branch_indices(:);
+            end
+            if ~isempty(sel_br)
+                [~, pos] = ismember(sel_br, pmu_config.pmu_from_branch_indices(:)); pos = pos(pos>0);
+                imf_sel = pmu_meas.imf(pos);
+                iaf_sel = pmu_meas.iaf(pos);
+                if_real = imf_sel .* cos(iaf_sel);
+                if_imag = imf_sel .* sin(iaf_sel);
+                count = length(if_real);
 
-            z_map{end+1} = struct('type', 'pmu', 'field', 'if_real', 'count', count, 'indices', pmu_config.pmu_from_branch_indices);
-            vector_parts{end+1} = if_real;
-            
-            s2_ifr=(cos(pmu_meas.iaf)).^2*s_im2+(pmu_meas.imf.*sin(pmu_meas.iaf)).^2*s_ia2;
-            weights_parts{end+1} = 1./s2_ifr;
+                z_map{end+1} = struct('type', 'pmu', 'field', 'if_real', 'count', count, 'indices', sel_br);
+                vector_parts{end+1} = if_real;
+                s2_ifr=(cos(iaf_sel)).^2*s_im2+(imf_sel.*sin(iaf_sel)).^2*s_ia2;
+                weights_parts{end+1} = 1./s2_ifr;
+
+                if isfield(pmu_meas, 'iaf') && ~isempty(pmu_meas.iaf)
+                    z_map{end+1} = struct('type', 'pmu', 'field', 'if_imag', 'count', count, 'indices', sel_br);
+                    vector_parts{end+1} = if_imag;
+                    s2_ifi=(sin(iaf_sel)).^2*s_im2+(imf_sel.*cos(iaf_sel)).^2*s_ia2;
+                    weights_parts{end+1} = 1./s2_ifi;
+                end
+            end
         end
         
-        % From-end 电流虚部 (iaf存在时)
-        if isfield(pmu_meas, 'iaf') && ~isempty(pmu_meas.iaf)
-            if_imag = pmu_meas.imf .* sin(pmu_meas.iaf);
-            count = length(if_imag);
-
-            z_map{end+1} = struct('type', 'pmu', 'field', 'if_imag', 'count', count, 'indices', pmu_config.pmu_from_branch_indices);
-            vector_parts{end+1} = if_imag;
-            
-            s2_ifi=(sin(pmu_meas.iaf)).^2*s_im2+(pmu_meas.imf.*cos(pmu_meas.iaf)).^2*s_ia2;
-            weights_parts{end+1} = 1./s2_ifi;
-        end
-        
-        % To-end 电流实部 (imt存在时)
+        % To-end 电流相量 -> 直角坐标（按选择的支路子集）
         if isfield(pmu_meas, 'imt') && ~isempty(pmu_meas.imt)
-            it_real = pmu_meas.imt .* cos(pmu_meas.iat);
-            count = length(it_real);
+            if isfield(selection, 'PMU') && isfield(selection.PMU, 'to_branch_idx') && isempty(selection.PMU.to_branch_idx)
+                sel_br_t = [];
+            elseif isfield(selection, 'PMU') && isfield(selection.PMU, 'to_branch_idx') && ~isempty(selection.PMU.to_branch_idx)
+                sel_br_t = selection.PMU.to_branch_idx(:);
+            else
+                sel_br_t = pmu_config.pmu_to_branch_indices(:);
+            end
+            if ~isempty(sel_br_t)
+                [~, pos] = ismember(sel_br_t, pmu_config.pmu_to_branch_indices(:)); pos = pos(pos>0);
+                imt_sel = pmu_meas.imt(pos);
+                iat_sel = pmu_meas.iat(pos);
+                it_real = imt_sel .* cos(iat_sel);
+                it_imag = imt_sel .* sin(iat_sel);
+                count = length(it_real);
 
-            z_map{end+1} = struct('type', 'pmu', 'field', 'it_real', 'count', count, 'indices', pmu_config.pmu_to_branch_indices);
-            vector_parts{end+1} = it_real;
+                z_map{end+1} = struct('type', 'pmu', 'field', 'it_real', 'count', count, 'indices', sel_br_t);
+                vector_parts{end+1} = it_real;
+                s2_itr=(cos(iat_sel)).^2*s_im2+(imt_sel.*sin(iat_sel)).^2*s_ia2;
+                weights_parts{end+1} = 1./s2_itr;
 
-            s2_itr=(cos(pmu_meas.iat)).^2*s_im2+(pmu_meas.imt.*sin(pmu_meas.iat)).^2*s_ia2;
-            weights_parts{end+1} = 1./s2_itr;
-        end
-        
-        % To-end 电流虚部 (iat存在时)
-        if isfield(pmu_meas, 'iat') && ~isempty(pmu_meas.iat)
-            it_imag = pmu_meas.imt .* sin(pmu_meas.iat);
-            count = length(it_imag);
-
-            z_map{end+1} = struct('type', 'pmu', 'field', 'it_imag', 'count', count, 'indices', pmu_config.pmu_to_branch_indices);
-            vector_parts{end+1} = it_imag;
-
-            s2_iti=(sin(pmu_meas.iat)).^2*s_im2+(pmu_meas.imt.*cos(pmu_meas.iat)).^2*s_ia2;
-            weights_parts{end+1} = 1./s2_iti;
+                if isfield(pmu_meas, 'iat') && ~isempty(pmu_meas.iat)
+                    z_map{end+1} = struct('type', 'pmu', 'field', 'it_imag', 'count', count, 'indices', sel_br_t);
+                    vector_parts{end+1} = it_imag;
+                    s2_iti=(sin(iat_sel)).^2*s_im2+(imt_sel.*cos(iat_sel)).^2*s_ia2;
+                    weights_parts{end+1} = 1./s2_iti;
+                end
+            end
         end
     end
     
