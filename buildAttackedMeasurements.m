@@ -64,66 +64,26 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
             end
         else % PMU
             switch map_item.field
-                case 'v_real',  v_real_part = data_to_update; v_real_idx = sel_idx;
+                case 'v_real'
+                    v_real_part = data_to_update; v_real_idx = sel_idx;
                 case 'v_imag'
                     if ~isempty(v_real_part)
-                        % 将母线编号映射回 pmu 向量位置进行部分更新
-                        if ~isempty(v_real_idx)
-                            [~, pos] = ismember(v_real_idx, pmu_config.locations(:)); pos = pos(pos>0);
-                        else
-                            pos = 1:length(v_real_part);
-                        end
-                        comp_v = v_real_part + 1j*data_to_update;
-                        if isfield(attacked_measurements.pmu, 'vm')
-                            tmp = attacked_measurements.pmu.vm;
-                            tmp(pos) = abs(comp_v);
-                            attacked_measurements.pmu.vm = tmp;
-                        end
-                        if isfield(attacked_measurements.pmu, 'va')
-                            tmp = attacked_measurements.pmu.va;
-                            tmp(pos) = angle(comp_v);
-                            attacked_measurements.pmu.va = tmp;
-                        end
+                        attacked_measurements = apply_pmu_complex_pair(attacked_measurements, 'v', v_real_part, data_to_update, v_real_idx, pmu_config);
+                        v_real_part = []; v_real_idx = [];
                     end
-                case 'if_real', if_real_part = data_to_update; if_real_idx = sel_idx;
+                case 'if_real'
+                    if_real_part = data_to_update; if_real_idx = sel_idx;
                 case 'if_imag'
                     if ~isempty(if_real_part)
-                        if ~isempty(if_real_idx)
-                            [~, pos] = ismember(if_real_idx, pmu_config.pmu_from_branch_indices(:)); pos = pos(pos>0);
-                        else
-                            pos = 1:length(if_real_part);
-                        end
-                        comp_if = if_real_part + 1j*data_to_update;
-                        if isfield(attacked_measurements.pmu, 'imf')
-                            tmp = attacked_measurements.pmu.imf;
-                            tmp(pos) = abs(comp_if);
-                            attacked_measurements.pmu.imf = tmp;
-                        end
-                        if isfield(attacked_measurements.pmu, 'iaf')
-                            tmp = attacked_measurements.pmu.iaf;
-                            tmp(pos) = angle(comp_if);
-                            attacked_measurements.pmu.iaf = tmp;
-                        end
+                        attacked_measurements = apply_pmu_complex_pair(attacked_measurements, 'if', if_real_part, data_to_update, if_real_idx, pmu_config);
+                        if_real_part = []; if_real_idx = [];
                     end
-                case 'it_real', it_real_part = data_to_update; it_real_idx = sel_idx;
+                case 'it_real'
+                    it_real_part = data_to_update; it_real_idx = sel_idx;
                 case 'it_imag'
                     if ~isempty(it_real_part)
-                        if ~isempty(it_real_idx)
-                            [~, pos] = ismember(it_real_idx, pmu_config.pmu_to_branch_indices(:)); pos = pos(pos>0);
-                        else
-                            pos = 1:length(it_real_part);
-                        end
-                        comp_it = it_real_part + 1j*data_to_update;
-                        if isfield(attacked_measurements.pmu, 'imt')
-                            tmp = attacked_measurements.pmu.imt;
-                            tmp(pos) = abs(comp_it);
-                            attacked_measurements.pmu.imt = tmp;
-                        end
-                        if isfield(attacked_measurements.pmu, 'iat')
-                            tmp = attacked_measurements.pmu.iat;
-                            tmp(pos) = angle(comp_it);
-                            attacked_measurements.pmu.iat = tmp;
-                        end
+                        attacked_measurements = apply_pmu_complex_pair(attacked_measurements, 'it', it_real_part, data_to_update, it_real_idx, pmu_config);
+                        it_real_part = []; it_real_idx = [];
                     end
             end
         end
@@ -138,18 +98,13 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
     estimated_S_to_c = compromised_v_complex(branch_to_bus) .* conj(Y_to * compromised_v_complex);
 
     all_system_fields = fieldnames(system_measurements.scada);
-    for k = 1:length(all_system_fields)
-        field = all_system_fields{k};
-        if ~isfield(attacker_measurements.scada, field) % If it's an unknown field
-            switch field
-                case 'v',  attacked_measurements.scada.v = abs(compromised_v_complex);
-                case 'pi', attacked_measurements.scada.pi = real(estimated_S_injection_c);
-                case 'qi', attacked_measurements.scada.qi = imag(estimated_S_injection_c);
-                case 'pf', attacked_measurements.scada.pf = real(estimated_S_from_c);
-                case 'qf', attacked_measurements.scada.qf = imag(estimated_S_from_c);
-                case 'pt', attacked_measurements.scada.pt = real(estimated_S_to_c);
-                case 'qt', attacked_measurements.scada.qt = imag(estimated_S_to_c);
-            end
+    scada_fields = {'v','pi','qi','pf','qf','pt','qt'};
+    scada_values = {abs(compromised_v_complex), real(estimated_S_injection_c), imag(estimated_S_injection_c), ...
+                    real(estimated_S_from_c),   imag(estimated_S_from_c),   real(estimated_S_to_c),      imag(estimated_S_to_c)};
+    for k = 1:length(scada_fields)
+        f = scada_fields{k};
+        if any(strcmp(all_system_fields, f)) && ~isfield(attacker_measurements.scada, f)
+            attacked_measurements.scada.(f) = scada_values{k};
         end
     end
     
@@ -160,17 +115,14 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
         estimated_It_c = Y_to * compromised_v_complex;
         
         all_system_pmu_fields = fieldnames(system_measurements.pmu);
-        for k = 1:length(all_system_pmu_fields)
-            field = all_system_pmu_fields{k};
-            if ~isfield(attacker_measurements.pmu, field) % If it's an unknown PMU field
-                switch field
-                    case 'vm', attacked_measurements.pmu.vm = abs(compromised_v_complex(pmu_config.locations));
-                    case 'va', attacked_measurements.pmu.va = angle(compromised_v_complex(pmu_config.locations));
-                    case 'imf', attacked_measurements.pmu.imf = abs(estimated_If_c(pmu_config.pmu_from_branch_indices));
-                    case 'iaf', attacked_measurements.pmu.iaf = angle(estimated_If_c(pmu_config.pmu_from_branch_indices));
-                    case 'imt', attacked_measurements.pmu.imt = abs(estimated_It_c(pmu_config.pmu_to_branch_indices));
-                    case 'iat', attacked_measurements.pmu.iat = angle(estimated_It_c(pmu_config.pmu_to_branch_indices));
-                end
+        pmu_fields = {'vm','va','imf','iaf','imt','iat'};
+        pmu_values = {abs(compromised_v_complex(pmu_config.locations)),  angle(compromised_v_complex(pmu_config.locations)), ...
+                      abs(estimated_If_c(pmu_config.pmu_from_branch_indices)), angle(estimated_If_c(pmu_config.pmu_from_branch_indices)), ...
+                      abs(estimated_It_c(pmu_config.pmu_to_branch_indices)),   angle(estimated_It_c(pmu_config.pmu_to_branch_indices))};
+        for k = 1:length(pmu_fields)
+            f = pmu_fields{k};
+            if any(strcmp(all_system_pmu_fields, f)) && ~isfield(attacker_measurements.pmu, f)
+                attacked_measurements.pmu.(f) = pmu_values{k};
             end
         end
     end
@@ -191,5 +143,48 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
         if isfield(attacked_measurements.pmu, 'iaf'), attacked_measurements.pmu.iaf = attacked_measurements.pmu.iaf + noise_params.pmu.ia * randn(size(attacked_measurements.pmu.iaf)); end
         if isfield(attacked_measurements.pmu, 'imt'), attacked_measurements.pmu.imt = attacked_measurements.pmu.imt + noise_params.pmu.im * randn(size(attacked_measurements.pmu.imt)); end
         if isfield(attacked_measurements.pmu, 'iat'), attacked_measurements.pmu.iat = attacked_measurements.pmu.iat + noise_params.pmu.ia * randn(size(attacked_measurements.pmu.iat)); end
+    end
+end
+
+function S = apply_pmu_complex_pair(S, kind, real_part, imag_part, idx, pmu_config)
+% 将直角分量对写回 PMU 极坐标数据（abs/angle），按索引映射
+    if isempty(real_part), return; end
+    comp = real_part + 1j*imag_part;
+    switch kind
+        case 'v'
+            base_idx = pmu_config.locations(:);
+            tgt_mag = 'vm'; tgt_ang = 'va';
+        case 'if'
+            base_idx = pmu_config.pmu_from_branch_indices(:);
+            tgt_mag = 'imf'; tgt_ang = 'iaf';
+        case 'it'
+            base_idx = pmu_config.pmu_to_branch_indices(:);
+            tgt_mag = 'imt'; tgt_ang = 'iat';
+        otherwise
+            return;
+    end
+    if ~isempty(idx)
+        [~, pos] = ismember(idx, base_idx); pos = pos(pos>0);
+    else
+        pos = 1:length(real_part);
+    end
+    if isfield(S, 'pmu')
+        if isfield(S.pmu, tgt_mag)
+            tmp = S.pmu.(tgt_mag); tmp(pos) = abs(comp); S.pmu.(tgt_mag) = tmp;
+        end
+        if isfield(S.pmu, tgt_ang)
+            tmp = S.pmu.(tgt_ang); tmp(pos) = angle(comp); S.pmu.(tgt_ang) = tmp;
+        end
+    end
+end
+
+function S = add_noise_fields(S, subname, fields, sigma)
+% 对子结构 subname 下的字段批量加噪（存在才加）
+    if ~isfield(S, subname), return; end
+    for i = 1:numel(fields)
+        f = fields{i};
+        if isfield(S.(subname), f)
+            S.(subname).(f) = S.(subname).(f) + sigma * randn(size(S.(subname).(f)));
+        end
     end
 end
