@@ -1,37 +1,32 @@
 function custom_constraints = constraints_case57(Pi_expr, mpc)
-% constraints_case57: 返回IEEE 57节点系统的特定有功功率约束
+% constraints_case57 IEEE-57 节点系统的特定有功注入约束（示例）。
 %
-% 输入:
-%   Pi_expr (sdpvar): YALMIP中代表节点有功注入功率的表达式向量
-%   mpc (struct): MATPOWER case 结构体 (可选，用于未来扩展)
+% 输入
+% - Pi_expr: sdpvar，节点有功注入向量表达式
+% - mpc    : MATPOWER case（保留用于扩展）
 %
-% 输出:
-%   custom_constraints (constraint): 包含所有自定义约束的YALMIP约束对象
+% 输出
+% - custom_constraints: YALMIP 约束对象集合
 
 custom_constraints = [];
 
-% 这些是针对IEEE 57节点系统的特定约束
-% 它们来自于旧代码，现在被模块化地管理在这里
-
-% 负荷节点 (纯消耗功率)
+% 典型负荷节点（纯消耗功率）约束：Pi <= 0
 load_buses_part1 = 13:20;
 load_buses_part2 = 27:33;
 load_buses_part3 = 41:44;
 load_buses_part4 = 49:57;
 all_load_buses = [load_buses_part1, load_buses_part2, load_buses_part3, load_buses_part4];
 for i = all_load_buses
-    custom_constraints = [custom_constraints, Pi_expr(i) <= 0];
+    custom_constraints = [custom_constraints, Pi_expr(i) <= 0]; %#ok<AGROW>
 end
 
-% 特殊发电机/联络点约束
-% 添加从旧代码迁移过来的，针对非发电机节点的特定约束
-custom_constraints = [custom_constraints, Pi_expr(4) <= 0.1];
-custom_constraints = [custom_constraints, Pi_expr(5) <= 0];
-custom_constraints = [custom_constraints, Pi_expr(7) <= 1]; % 注意：这个约束允许正注入，请根据物理意义确认
+% 其他系统特定约束（从原逻辑整理迁移）
+custom_constraints = [custom_constraints, Pi_expr(4)  <= 0.1];
+custom_constraints = [custom_constraints, Pi_expr(5)  <= 0];
+custom_constraints = [custom_constraints, Pi_expr(7)  <= 1];    % 注意：允许正注入
 custom_constraints = [custom_constraints, Pi_expr(10) <= 0];
 custom_constraints = [custom_constraints, -0.01 <= Pi_expr(11) <= 0.01];
 
-% 其他原有的特殊约束
 custom_constraints = [custom_constraints, -0.01 <= Pi_expr(21) <= 0.01];
 custom_constraints = [custom_constraints, Pi_expr(22) <= 0.1];
 custom_constraints = [custom_constraints, Pi_expr(23) <= 0];
@@ -51,3 +46,4 @@ custom_constraints = [custom_constraints, Pi_expr(47) <= 0];
 custom_constraints = [custom_constraints, -0.01 <= Pi_expr(48) <= 0.01];
 
 end
+
