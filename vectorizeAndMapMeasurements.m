@@ -32,6 +32,7 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
     if isfield(measurements, 'scada')
         scada_meas = measurements.scada;
         scada_fields = {'v','pi','qi','pf','qf','pt','qt'};
+        bus_fields = {'v','pi','qi'}; % 其余为支路量测
         noise_map = struct('v', noise_params.scada.v, 'pi', noise_params.scada.p, ...
                            'qi', noise_params.scada.q, 'pf', noise_params.scada.p, ...
                            'qf', noise_params.scada.q, 'pt', noise_params.scada.p, ...
@@ -41,32 +42,21 @@ function [z_vector, z_map, z_weights] = vectorizeAndMapMeasurements(measurements
             field = scada_fields{i};
             if ~isfield(scada_meas, field) || isempty(scada_meas.(field)), continue; end
 
-            % 若 selection.SCADA.<field>_idx 显式给空，则禁用该字段
-            if isfield(selection,'SCADA') && isfield(selection.SCADA,[field '_idx']) && isempty(selection.SCADA.([field '_idx']))
-                continue;
-            end
-
             full_data = scada_meas.(field)(:);
-            switch field
-                case {'v','pi','qi'}
-                    if isfield(selection,'SCADA') && isfield(selection.SCADA,[field '_idx']) && ~isempty(selection.SCADA.([field '_idx']))
-                        sel_idx = selection.SCADA.([field '_idx'])(:);
-                    else
-                        if isempty(num_buses), num_buses = length(full_data); end
-                        sel_idx = (1:num_buses)';
-                    end
-                otherwise
-                    if isfield(selection,'SCADA') && isfield(selection.SCADA,[field '_idx']) && ~isempty(selection.SCADA.([field '_idx']))
-                        sel_idx = selection.SCADA.([field '_idx'])(:);
-                    else
-                        if isempty(num_branches), num_branches = length(full_data); end
-                        sel_idx = (1:num_branches)';
-                    end
+            is_bus = any(strcmp(field, bus_fields));
+            if is_bus
+                if isempty(num_buses), num_buses = length(full_data); end
+                default_idx = (1:num_buses)';
+            else
+                if isempty(num_branches), num_branches = length(full_data); end
+                default_idx = (1:num_branches)';
             end
+            sel_idx = pick(selection, 'SCADA', [field '_idx'], default_idx);
+            if isempty(sel_idx), continue; end % 显式空：禁用该字段
 
             data = full_data(sel_idx);
-            [z_map, vector_parts, weights_parts] = add_seg(z_map, vector_parts, weights_parts, ...
-                'scada', field, sel_idx, data, repmat(1/noise_map.(field)^2, numel(sel_idx), 1));
+            w = repmat(1 / noise_map.(field)^2, numel(sel_idx), 1);
+            [z_map, vector_parts, weights_parts] = add_seg(z_map, vector_parts, weights_parts, 'scada', field, sel_idx, data, w);
         end
     end
 
@@ -158,4 +148,3 @@ function [xr, xi, wr, wi] = polar_to_rect(mag, ang, s_mag, s_ang)
     wr = 1 ./ s2r;
     wi = 1 ./ s2i;
 end
-
