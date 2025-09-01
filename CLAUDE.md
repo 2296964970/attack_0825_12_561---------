@@ -128,4 +128,11 @@ yalmiptest
 - **Ptrmax57.mat**：线路容量矩阵（字段 `Ptrmax57`）。
 - **2-7_week.txt**：负荷数据源文件（96 点）。
 
+## 给 Claude 的工作提示
+- 保持最小变更：任何修改应聚焦单一问题，避免牵连联动文件；优先在 `load_config.m` 做可回滚的参数化调整。
+- 维度一致性：修改 `vectorizeAndMapMeasurements.m`、`calculate_h_H.m`、`runStateEstimation.m` 时，务必同步检查测量向量 z、H 的维度和与 `measurement_map` 的索引映射。
+- 物理一致：涉及潮流与 PMU 方程的改动需同时校验 Ybus/Yf/Yt 的一致性，避免违反基于 MATPOWER 的网络模型假设。
+- 隐蔽性约束：在 `buildAttackModel.m` 中不要改变“隐蔽性”约束的语义（h(x_c) = z + a）；如需新增松弛或罚项，请以可配置方式挂到 `load_config.m`。
+- 数值稳定：WLS 不收敛可考虑增加阻尼、正则或放宽收敛阈值；优化失败可降低 λ、调大重启次数、或放宽过载目标。
+- 不破坏接口：不要改变关键函数对外接口与返回结构字段名，除非同步更新所有调用点并在注释中说明。
 
