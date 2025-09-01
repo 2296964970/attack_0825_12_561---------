@@ -1,23 +1,23 @@
   function [calculated_measurements, jacobian_matrix] = calculate_h_H(state_vector, mpc, measurement_map, pmu_config, num_state_vars, options)
-%CALCULATE_H_H 计算WLS状态估计中的测量函数h(x)和雅可比矩阵H
+%CALCULATE_H_H čŽĄçŽWLSçśćäź°čŽĄä¸­çćľéĺ˝ć°h(x)ĺéĺŻćŻçŠéľH
 %
-%   此函数封装了为混合SCADA/PMU状态估计计算h(x)和H的复杂逻辑。
+%   ć­¤ĺ˝ć°ĺ°čŁäşä¸şćˇˇĺSCADA/PMUçśćäź°čŽĄčŽĄçŽh(x)ĺHçĺ¤ćéťčžă
 %
-%   输入:
-%     state_vector           - 当前状态向量 [e; f] (直角坐标)
-%     mpc                    - MATPOWER案例，用于获取电网参数
-%     measurement_map        - 由向量化阶段生成的映射表（段+indices）
-%     pmu_config             - PMU配置，如安装位置和支路索引
-%     num_state_vars         - 状态向量x的总维度 (2*n-1)
-%     options                - 包含slack_bus_id等设置的结构体
+%   čžĺĽ:
+%     state_vector           - ĺ˝ĺçśćĺé [e; f] (ç´č§ĺć )
+%     mpc                    - MATPOWERćĄäžďźç¨äşčˇĺçľç˝ĺć°
+%     measurement_map        - çąĺéĺéśćŽľçćçć ĺ°čĄ¨ďźćŽľ+indicesďź
+%     pmu_config             - PMUéç˝ŽďźĺŚĺŽčŁä˝ç˝ŽĺćŻčˇŻç´˘ĺź
+%     num_state_vars         - çśćĺéxçćťçť´ĺşŚ (2*n-1)
+%     options                - ĺĺŤslack_bus_idç­čŽžç˝Žççťćä˝
 %
-%   输出:
-%     calculated_measurements - 计算得到的测量向量 h(x)
-%     jacobian_matrix         - 雅可比矩阵 H = dh/dx
+%   čžĺş:
+%     calculated_measurements - čŽĄçŽĺžĺ°çćľéĺé h(x)
+%     jacobian_matrix         - éĺŻćŻçŠéľ H = dh/dx
 
 define_constants;
 
-% --- 1. 从MPC和状态向量中提取参数 ---
+% --- 1. äťMPCĺçśćĺéä¸­ćĺĺć° ---
 [baseMVA, bus, branch] = deal(mpc.baseMVA, mpc.bus, mpc.branch);
 num_buses = size(bus, 1);
 [Y_bus, Y_from, Y_to] = makeYbus(baseMVA, bus, branch);
@@ -32,8 +32,8 @@ current_voltage_real = state_vector(1:num_buses);
 current_voltage_imag = zeros(num_buses, 1);
 current_voltage_imag(f_indices) = state_vector(num_buses+1:end);
 
-% --- 1b. 维度一致性与测量计数检查 ---
-% 由映射表累加得到测量总数
+% --- 1b. çť´ĺşŚä¸č´ć§ä¸ćľéčŽĄć°ćŁćĽ ---
+% çąć ĺ°čĄ¨ç´Żĺ ĺžĺ°ćľéćťć°
 num_measurements = 0;
 for ii = 1:length(measurement_map)
     if isfield(measurement_map{ii}, 'count') && ~isempty(measurement_map{ii}.count)
@@ -41,12 +41,12 @@ for ii = 1:length(measurement_map)
     end
 end
 
-% --- 2. 初始化输出 ---
+% --- 2. ĺĺ§ĺčžĺş ---
 h_parts = {};
 jacobian_matrix = zeros(num_measurements, num_state_vars);
 row_idx = 1;
 
-% --- 3. 公共计算: 注入电流和支路电流 ---
+% --- 3. ĺŹĺąčŽĄçŽ: ćł¨ĺĽçľćľĺćŻčˇŻçľćľ ---
 I_real_inj = G_bus * current_voltage_real - B_bus * current_voltage_imag;
 I_imag_inj = B_bus * current_voltage_real + G_bus * current_voltage_imag;
 If_real = G_from * current_voltage_real - B_from * current_voltage_imag;
@@ -58,7 +58,7 @@ branch_from_bus = branch(:, F_BUS);
 branch_to_bus = branch(:, T_BUS);
 
 
-% --- 4. 基于 measurement_map 构造 h/H ---
+% --- 4. ĺşäş measurement_map ćé  h/H ---
 e_from = current_voltage_real(branch_from_bus); f_from = current_voltage_imag(branch_from_bus);
 e_to = current_voltage_real(branch_to_bus);   f_to = current_voltage_imag(branch_to_bus);
 
@@ -178,7 +178,7 @@ calculated_measurements = vertcat(h_parts{:});
 end
 
 function [dP_de, dP_df] = branch_P_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
-% ֧·�й��������ſɱȿ飨���а�ȫ���죩
+% Ö§ÂˇÓĐšŚ˛âÁżľÄŃĹżÉąČżéŁ¨ÖđĐĐ°˛ČŤššÔěŁŠ
 nb = numel(kset);
 dP_de = zeros(nb, num_buses);
 dP_df = zeros(nb, num_buses);
@@ -196,7 +196,7 @@ end
 end
 
 function [dQ_de, dQ_df] = branch_Q_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
-% ֧·�޹��������ſɱȿ飨���а�ȫ���죩
+% Ö§ÂˇÎŢšŚ˛âÁżľÄŃĹżÉąČżéŁ¨ÖđĐĐ°˛ČŤššÔěŁŠ
 nb = numel(kset);
 dQ_de = zeros(nb, num_buses);
 dQ_df = zeros(nb, num_buses);
