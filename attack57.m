@@ -37,7 +37,8 @@ log_template = struct(...
     'post_attack_residual_norm', NaN, ...
     'is_attack_detected', false, ...
     'attack_success', false, ...
-    'attacked_lines_indices', [] ...
+    'attacked_lines_indices', [], ...
+    'meas_change_l1', NaN ...
 );
 simulation_log = repmat(log_template, config.Simulation.NumScenarios, 1);
 
@@ -91,6 +92,9 @@ for scenario_index = 1:config.Simulation.NumScenarios
         [state_att, stats_att] = runStateEstimation(selectedModel, attack.y_att, config);
         simulation_log(scenario_index).post_attack_residual_norm = norm(stats_att.residual);
         simulation_log(scenario_index).is_attack_detected = stats_att.detectionFlag;
+        % 记录攻击前后测量之差的 L1 范数
+        l1_change = sum(abs(attack.y_att - y));
+        simulation_log(scenario_index).meas_change_l1 = l1_change;
     end
 
     % 输出摘要
@@ -108,6 +112,7 @@ for scenario_index = 1:config.Simulation.NumScenarios
             ternary(stats_att.converged,'收敛','未收敛'), simulation_log(scenario_index).post_attack_residual_norm);
         fprintf('[%c] 坏数据检测 (攻击后)         : %s\n', ...
             ternary(stats_att.detectionFlag,'!','+'), ternary(stats_att.detectionFlag,'检测到异常','未检测到异常'));
+        fprintf('[*] 测量差值L1（前→后）         : %.6g\n', simulation_log(scenario_index).meas_change_l1);
     else
         fprintf('[-] 攻击向量生成                 : 失败\n');
     end

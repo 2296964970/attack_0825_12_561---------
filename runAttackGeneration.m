@@ -41,14 +41,9 @@ function attack = runAttackGeneration(selectedModel, y, mpc, opf_results, config
         return;
     end
 
-    % 组装攻击后的测量向量（已知行：z+a；未知行：h(x_c)）
+    % 组装攻击后的测量向量（全知假设：known_mask 全 True 时等价于 y + a；不再叠加二次噪声）
     y_att_base = assemble_attacked_vector(selectedModel, known_mask, y, best);
-
-    % 按测量噪声模型为攻击后量测再加噪（与原实现一致的后处理）
-    vdiag = full(diag(selectedModel.R));
-    if isrow(vdiag), vdiag = vdiag.'; end
-    eps_noise = randn(numel(vdiag), 1) .* sqrt(max(vdiag, 0));
-    attack.y_att = y_att_base + eps_noise;
+    attack.y_att = y_att_base;
     attack.Vc = best.Vc; attack.uc = best.uc; attack.a = best.a;
 end
 

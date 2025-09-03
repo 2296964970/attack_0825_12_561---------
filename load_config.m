@@ -59,7 +59,7 @@ function config = load_config()
     config.Attack.NumLinesToAttack = 2;                   % 每次随机选择的目标线路数量
     config.Attack.OverloadFactor = 1.05;                  % 目标过载比例 (如 1.05 表示 105%)
     config.Attack.NumRestarts = 5;                        % 优化多起点重启次数
-    config.Attack.UnknownFields = {'pt', 'qt'};           % 攻击者未知的测量字段
+    config.Attack.UnknownFields = {};                      % 攻击者未知的测量字段（全知假设为空集）
     config.Attack.VoltageDeviationPenalty = 5;            % 电压偏差惩罚权重 lambda
     config.Attack.Solver = 'ipopt';                       % YALMIP 使用的求解器
 
