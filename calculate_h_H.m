@@ -56,6 +56,49 @@ branch_to_bus   = branch(:, T_BUS);
 e_from = e(branch_from_bus); f_from = f(branch_from_bus);
 e_to   = e(branch_to_bus);   f_to   = f(branch_to_bus);
 
+% --- Wirtinger Calculus Setup for Jacobians ---
+V = e + 1j * f;
+Ybus = G_bus + 1j * B_bus;
+
+% Nodal Injection Jacobians (for pi, qi)
+I_inj = Ybus * V;
+dS_inj_dV = diag(conj(I_inj));
+dS_inj_dV_conj = diag(V) * conj(Ybus);
+dS_inj_de = dS_inj_dV + dS_inj_dV_conj;
+dS_inj_df = 1j * (dS_inj_dV - dS_inj_dV_conj);
+dPi_de_mat = real(dS_inj_de);
+dPi_df_mat = real(dS_inj_df);
+dQi_de_mat = imag(dS_inj_de);
+dQi_df_mat = imag(dS_inj_df);
+
+% Branch Flow Jacobians (for pf, qf, pt, qt)
+num_branches = size(branch, 1);
+Yf = G_from + 1j * B_from;
+Yt = G_to   + 1j * B_to;
+
+% "From" end Jacobians
+If = Yf * V;
+dSf_dV = sparse(1:num_branches, branch_from_bus, conj(If), num_branches, num_buses);
+dSf_dV_conj = diag(V(branch_from_bus)) * conj(Yf);
+dSf_de = dSf_dV + dSf_dV_conj;
+dSf_df = 1j * (dSf_dV - dSf_dV_conj);
+dPf_de_mat = real(dSf_de);
+dPf_df_mat = real(dSf_df);
+dQf_de_mat = imag(dSf_de);
+dQf_df_mat = imag(dSf_df);
+
+% "To" end Jacobians
+It = Yt * V;
+dSt_dV = sparse(1:num_branches, branch_to_bus, conj(It), num_branches, num_buses);
+dSt_dV_conj = diag(V(branch_to_bus)) * conj(Yt);
+dSt_de = dSt_dV + dSt_dV_conj;
+dSt_df = 1j * (dSt_dV - dSt_dV_conj);
+dPt_de_mat = real(dSt_de);
+dPt_df_mat = real(dSt_df);
+dQt_de_mat = imag(dSt_de);
+dQt_df_mat = imag(dSt_df);
+% --- End Wirtinger Setup ---
+
 for seg = 1:length(measurement_map)
     item = measurement_map{seg};
     cnt = item.count;
@@ -84,42 +127,34 @@ for seg = 1:length(measurement_map)
                 case 'pi'
                     Pi = e .* I_real_inj + f .* I_imag_inj;
                     h_parts{end+1} = Pi(idx);
-                    dPi_de = diag(I_real_inj) + diag(e) * G_bus + diag(f) * B_bus;
-                    dPi_df_full = diag(I_imag_inj) - diag(e) * B_bus + diag(f) * G_bus;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dPi_de(idx, :);
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dPi_df_full(idx, f_indices);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dPi_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dPi_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
                 case 'qi'
                     Qi = f .* I_real_inj - e .* I_imag_inj;
                     h_parts{end+1} = Qi(idx);
-                    dQi_de = diag(-I_imag_inj) + diag(f) * G_bus - diag(e) * B_bus;
-                    dQi_df_full = diag(I_real_inj)  - diag(f) * B_bus - diag(e) * G_bus;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQi_de(idx, :);
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQi_df_full(idx, f_indices);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQi_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQi_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
                 case 'pf'
-                    [dP_de, dP_df] = branch_P_block(idx, branch_from_bus, G_from, B_from, e, f, If_real, If_imag, num_buses);
-                    h_parts{end+1} = real(e_from .* If_real + f_from .* If_imag);
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dP_de;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dP_df(:, f_indices);
+                    h_parts{end+1} = e_from(idx) .* If_real(idx) + f_from(idx) .* If_imag(idx);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dPf_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dPf_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
                 case 'qf'
-                    [dQ_de, dQ_df] = branch_Q_block(idx, branch_from_bus, G_from, B_from, e, f, If_real, If_imag, num_buses);
-                    h_parts{end+1} = imag((e_from + 1j*f_from) .* (If_real - 1j*If_imag));
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQ_de;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQ_df(:, f_indices);
+                    h_parts{end+1} = f_from(idx) .* If_real(idx) - e_from(idx) .* If_imag(idx);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQf_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQf_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
                 case 'pt'
-                    [dP_de, dP_df] = branch_P_block(idx, branch_to_bus, G_to, B_to, e, f, It_real, It_imag, num_buses);
-                    h_parts{end+1} = real(e_to .* It_real + f_to .* It_imag);
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dP_de;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dP_df(:, f_indices);
+                    h_parts{end+1} = e_to(idx) .* It_real(idx) + f_to(idx) .* It_imag(idx);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dPt_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dPt_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
                 case 'qt'
-                    [dQ_de, dQ_df] = branch_Q_block(idx, branch_to_bus, G_to, B_to, e, f, It_real, It_imag, num_buses);
-                    h_parts{end+1} = imag((e_to + 1j*f_to) .* (It_real - 1j*It_imag));
-                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQ_de;
-                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQ_df(:, f_indices);
+                    h_parts{end+1} = f_to(idx) .* It_real(idx) - e_to(idx) .* It_imag(idx);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = dQt_de_mat(idx, :);
+                    jacobian_matrix(row_idx:row_idx+cnt-1, num_buses+1:end) = dQt_df_mat(idx, f_indices);
                     row_idx = row_idx + cnt;
             end
         case 'pmu'
@@ -168,39 +203,5 @@ end
 calculated_measurements = vertcat(h_parts{:});
 end
 
-function [dP_de, dP_df] = branch_P_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
-% 分块计算支路有功潮流对 e/f 的偏导（按首/末端矩阵选择）。
-nb = numel(kset);
-dP_de = zeros(nb, num_buses);
-dP_df = zeros(nb, num_buses);
-for t = 1:nb
-    k = kset(t);
-    i = branch_bus_side(k);
-    e_i = e_all(i); f_i = f_all(i);
-    row_de = zeros(1, num_buses);
-    row_df = zeros(1, num_buses);
-    row_de(i) = Ir(k); row_de = row_de + e_i * Gs(k,:) + f_i * Bs(k,:);
-    row_df(i) = Ii(k); row_df = row_df - e_i * Bs(k,:) + f_i * Gs(k,:);
-    dP_de(t,:) = row_de;
-    dP_df(t,:) = row_df;
-end
-end
 
-function [dQ_de, dQ_df] = branch_Q_block(kset, branch_bus_side, Gs, Bs, e_all, f_all, Ir, Ii, num_buses)
-% 分块计算支路无功潮流对 e/f 的偏导（按首/末端矩阵选择）。
-nb = numel(kset);
-dQ_de = zeros(nb, num_buses);
-dQ_df = zeros(nb, num_buses);
-for t = 1:nb
-    k = kset(t);
-    i = branch_bus_side(k);
-    e_i = e_all(i); f_i = f_all(i);
-    row_de = zeros(1, num_buses);
-    row_df = zeros(1, num_buses);
-    row_de(i) = -Ii(k); row_de = row_de + f_i * Gs(k,:) - e_i * Bs(k,:);
-    row_df(i) =  Ir(k); row_df = row_df - f_i * Bs(k,:) - e_i * Gs(k,:);
-    dQ_de(t,:) = row_de;
-    dQ_df(t,:) = row_df;
-end
-end
 
