@@ -24,6 +24,10 @@ G_to = real(Y_to);   B_to = imag(Y_to);
 slack_bus_id = options.slack_bus_id;
 f_indices = setdiff(1:num_buses, slack_bus_id);
 
+% 预先构建 f 分量对应到状态向量列的映射（slack 的 f 不在状态中）
+f_col_map = zeros(num_buses, 1); % 0 表示该母线没有 f 列（即平衡母线）
+f_col_map(f_indices) = num_buses + (1:length(f_indices));
+
 % 从 x 还原 e/f
 e = state_vector(1:num_buses);
 f = zeros(num_buses, 1);
@@ -58,12 +62,11 @@ e_to   = e(branch_to_bus);   f_to   = f(branch_to_bus);
 
 % --- Wirtinger Calculus Setup for Jacobians ---
 V = e + 1j * f;
-Ybus = G_bus + 1j * B_bus;
 
 % Nodal Injection Jacobians (for pi, qi)
-I_inj = Ybus * V;
+I_inj = Y_bus * V;
 dS_inj_dV = diag(conj(I_inj));
-dS_inj_dV_conj = diag(V) * conj(Ybus);
+dS_inj_dV_conj = diag(V) * conj(Y_bus);
 dS_inj_de = dS_inj_dV + dS_inj_dV_conj;
 dS_inj_df = 1j * (dS_inj_dV - dS_inj_dV_conj);
 dPi_de_mat = real(dS_inj_de);
@@ -73,13 +76,11 @@ dQi_df_mat = imag(dS_inj_df);
 
 % Branch Flow Jacobians (for pf, qf, pt, qt)
 num_branches = size(branch, 1);
-Yf = G_from + 1j * B_from;
-Yt = G_to   + 1j * B_to;
 
 % "From" end Jacobians
-If = Yf * V;
+If = Y_from * V;
 dSf_dV = sparse(1:num_branches, branch_from_bus, conj(If), num_branches, num_buses);
-dSf_dV_conj = diag(V(branch_from_bus)) * conj(Yf);
+dSf_dV_conj = diag(V(branch_from_bus)) * conj(Y_from);
 dSf_de = dSf_dV + dSf_dV_conj;
 dSf_df = 1j * (dSf_dV - dSf_dV_conj);
 dPf_de_mat = real(dSf_de);
@@ -88,9 +89,9 @@ dQf_de_mat = imag(dSf_de);
 dQf_df_mat = imag(dSf_df);
 
 % "To" end Jacobians
-It = Yt * V;
+It = Y_to * V;
 dSt_dV = sparse(1:num_branches, branch_to_bus, conj(It), num_branches, num_buses);
-dSt_dV_conj = diag(V(branch_to_bus)) * conj(Yt);
+dSt_dV_conj = diag(V(branch_to_bus)) * conj(Y_to);
 dSt_de = dSt_dV + dSt_dV_conj;
 dSt_df = 1j * (dSt_dV - dSt_dV_conj);
 dPt_de_mat = real(dSt_de);
@@ -114,16 +115,17 @@ for seg = 1:length(measurement_map)
                 case 'v'
                     Vmag = hypot(e, f);
                     h_parts{end+1} = Vmag(idx);
-                    for t = 1:cnt
-                        i = idx(t);
-                        Vi = max(Vmag(i), 1e-6);
-                        jacobian_matrix(row_idx, i) = e(i) / Vi;
-                        if i ~= slack_bus_id
-                            f_col_idx = num_buses + find(f_indices == i, 1);
-                            jacobian_matrix(row_idx, f_col_idx) = f(i) / Vi;
-                        end
-                        row_idx = row_idx + 1;
+                    rows = (row_idx:row_idx+cnt-1)';
+                    Vi = max(Vmag(idx), 1e-6);
+                    % 对 e 部分的导数：∂|V|/∂e = e/|V|
+                    jacobian_matrix(sub2ind(size(jacobian_matrix), rows, idx)) = e(idx) ./ Vi;
+                    % 对 f 部分的导数：∂|V|/∂f = f/|V|（仅对非平衡母线有对应列）
+                    f_cols = f_col_map(idx);
+                    mask = f_cols ~= 0;
+                    if any(mask)
+                        jacobian_matrix(sub2ind(size(jacobian_matrix), rows(mask), f_cols(mask))) = f(idx(mask)) ./ Vi(mask);
                     end
+                    row_idx = row_idx + cnt;
                 case 'pi'
                     Pi = e .* I_real_inj + f .* I_imag_inj;
                     h_parts{end+1} = Pi(idx);
@@ -161,21 +163,18 @@ for seg = 1:length(measurement_map)
             switch field
                 case 'v_real'
                     h_parts{end+1} = e(idx);
-                    for t = 1:cnt
-                        bus_k = idx(t);
-                        jacobian_matrix(row_idx, bus_k) = 1;
-                        row_idx = row_idx + 1;
-                    end
+                    rows = (row_idx:row_idx+cnt-1)';
+                    jacobian_matrix(sub2ind(size(jacobian_matrix), rows, idx)) = 1;
+                    row_idx = row_idx + cnt;
                 case 'v_imag'
                     h_parts{end+1} = f(idx);
-                    for t = 1:cnt
-                        bus_k = idx(t);
-                        if bus_k ~= slack_bus_id
-                            f_col_idx = num_buses + find(f_indices == bus_k, 1);
-                            jacobian_matrix(row_idx, f_col_idx) = 1;
-                        end
-                        row_idx = row_idx + 1;
+                    rows = (row_idx:row_idx+cnt-1)';
+                    f_cols = f_col_map(idx);
+                    mask = f_cols ~= 0; % 跳过平衡母线
+                    if any(mask)
+                        jacobian_matrix(sub2ind(size(jacobian_matrix), rows(mask), f_cols(mask))) = 1;
                     end
+                    row_idx = row_idx + cnt;
                 case 'if_real'
                     h_parts{end+1} = If_real(idx);
                     jacobian_matrix(row_idx:row_idx+cnt-1, 1:num_buses) = G_from(idx,:);
