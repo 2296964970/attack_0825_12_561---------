@@ -27,6 +27,7 @@ function config = load_config()
     config.Simulation.VerboseMode = false;                % 子函数是否打印详细日志
     config.Simulation.NumScenarios = 96;                  % 总仿真场景数
     config.Simulation.LoadScaleFactor = 0.5295;           % 基础负荷缩放因子
+    config.Simulation.PlotOutputDir = 'attack_plots';     % 攻击仿真图保存目录
 
     % =========================================================================
     %  3) 电网模型参数 (Grid)
@@ -59,7 +60,7 @@ function config = load_config()
     config.Attack.NumLinesToAttack = 2;                   % 每次随机选择的目标线路数量
     config.Attack.OverloadFactor = 1.05;                  % 目标过载比例 (如 1.05 表示 105%)
     config.Attack.NumRestarts = 5;                        % 优化多起点重启次数
-    config.Attack.UnknownFields = {};                    % 攻击者未知的测量字段（空表示掌握所有测量）
+    config.Attack.UnknownFields = {'pt','qt'};                    % 攻击者未知的测量字段（空表示掌握所有测量）
     config.Attack.VoltageDeviationPenalty = 5;            % 电压偏差惩罚权重 lambda
     config.Attack.Solver = 'ipopt';                       % YALMIP 使用的求解器
 
