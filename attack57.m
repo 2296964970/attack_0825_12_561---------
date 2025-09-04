@@ -76,15 +76,19 @@ for scenario_index = 1:config.Simulation.NumScenarios
     % 将攻击者未知的测量字段从已知集中剔除
     full_true_measurements = true_measurements;
     attacker_known_measurements = true_measurements;
-    for k = 1:length(config.Attack.UnknownFields)
-        field_name = config.Attack.UnknownFields{k};
-        if isfield(attacker_known_measurements, 'scada') && ...
-           isfield(attacker_known_measurements.scada, field_name)
-            attacker_known_measurements.scada = rmfield(attacker_known_measurements.scada, field_name);
-        end
-        if isfield(attacker_known_measurements, 'pmu') && ...
-           isfield(attacker_known_measurements.pmu, field_name)
-            attacker_known_measurements.pmu = rmfield(attacker_known_measurements.pmu, field_name);
+    
+    % 检查是否有未知字段需要移除
+    if ~isempty(config.Attack.UnknownFields)
+        for k = 1:length(config.Attack.UnknownFields)
+            field_name = config.Attack.UnknownFields{k};
+            if isfield(attacker_known_measurements, 'scada') && ...
+               isfield(attacker_known_measurements.scada, field_name)
+                attacker_known_measurements.scada = rmfield(attacker_known_measurements.scada, field_name);
+            end
+            if isfield(attacker_known_measurements, 'pmu') && ...
+               isfield(attacker_known_measurements.pmu, field_name)
+                attacker_known_measurements.pmu = rmfield(attacker_known_measurements.pmu, field_name);
+            end
         end
     end
 
