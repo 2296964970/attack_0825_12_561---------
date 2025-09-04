@@ -114,25 +114,6 @@ function attacked_measurements = buildAttackedMeasurements(system_measurements, 
         end
     end
 
-    % Step 4: 为伪造数据添加噪声
-    if isfield(attacked_measurements,'scada')
-        if isfield(attacked_measurements.scada, 'v'),  attacked_measurements.scada.v  = attacked_measurements.scada.v  + noise_params.scada.v * randn(size(attacked_measurements.scada.v)); end
-        if isfield(attacked_measurements.scada, 'pi'), attacked_measurements.scada.pi = attacked_measurements.scada.pi + noise_params.scada.p * randn(size(attacked_measurements.scada.pi)); end
-        if isfield(attacked_measurements.scada, 'qi'), attacked_measurements.scada.qi = attacked_measurements.scada.qi + noise_params.scada.q * randn(size(attacked_measurements.scada.qi)); end
-        if isfield(attacked_measurements.scada, 'pf'), attacked_measurements.scada.pf = attacked_measurements.scada.pf + noise_params.scada.p * randn(size(attacked_measurements.scada.pf)); end
-        if isfield(attacked_measurements.scada, 'qf'), attacked_measurements.scada.qf = attacked_measurements.scada.qf + noise_params.scada.q * randn(size(attacked_measurements.scada.qf)); end
-        if isfield(attacked_measurements.scada, 'pt'), attacked_measurements.scada.pt = attacked_measurements.scada.pt + noise_params.scada.p * randn(size(attacked_measurements.scada.pt)); end
-        if isfield(attacked_measurements.scada, 'qt'), attacked_measurements.scada.qt = attacked_measurements.scada.qt + noise_params.scada.q * randn(size(attacked_measurements.scada.qt)); end
-    end
-
-    if isfield(attacked_measurements,'pmu')
-        if isfield(attacked_measurements.pmu, 'vm'),  attacked_measurements.pmu.vm  = attacked_measurements.pmu.vm  + noise_params.pmu.vm * randn(size(attacked_measurements.pmu.vm)); end
-        if isfield(attacked_measurements.pmu, 'va'),  attacked_measurements.pmu.va  = attacked_measurements.pmu.va  + noise_params.pmu.va * randn(size(attacked_measurements.pmu.va)); end
-        if isfield(attacked_measurements.pmu, 'imf'), attacked_measurements.pmu.imf = attacked_measurements.pmu.imf + noise_params.pmu.im * randn(size(attacked_measurements.pmu.imf)); end
-        if isfield(attacked_measurements.pmu, 'iaf'), attacked_measurements.pmu.iaf = attacked_measurements.pmu.iaf + noise_params.pmu.ia * randn(size(attacked_measurements.pmu.iaf)); end
-        if isfield(attacked_measurements.pmu, 'imt'), attacked_measurements.pmu.imt = attacked_measurements.pmu.imt + noise_params.pmu.im * randn(size(attacked_measurements.pmu.imt)); end
-        if isfield(attacked_measurements.pmu, 'iat'), attacked_measurements.pmu.iat = attacked_measurements.pmu.iat + noise_params.pmu.ia * randn(size(attacked_measurements.pmu.iat)); end
-    end
 end
 
 function S = apply_pmu_complex_pair(S, kind, real_part, imag_part, idx, pmu_config)
